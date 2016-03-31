@@ -2,6 +2,7 @@
 
 import os
 import sys
+import time
 import httplib2
 import subprocess
 import webbrowser
@@ -9,6 +10,36 @@ import webbrowser
 from oauth2client import client
 from oauth2client.file import Storage
 
+# =================
+# Private Functions
+# +++++++++++++++++
+
+def getNumOfCores():
+    proc = subprocess.Popen("nproc", shell=True, stdout=subprocess.PIPE)
+    numOfCores = proc.communicate()[0].strip()
+    print("Number of cores [" + numOfCores + "]")
+    return numOfCores
+
+
+# sudo pip install youtube-dl
+import youtube_dl
+
+def downloadSong(yt_song_url):
+    options = {
+        'outtmpl': playlist_path + '/%(id)s.mp3',
+        'extractaudio': True,
+        'format': 'bestaudio/best',
+        'audioformat': 'mp3',
+        'noplaylist': True
+    }
+    with youtube_dl.YoutubeDL(options) as ydl:
+        ydl.download([yt_song_url])
+
+
+# ====
+# Main
+# ++++
+    
 storage = Storage("%s-oauth2.json" % sys.argv[0])
 credentials = storage.get()
 
@@ -43,8 +74,12 @@ print(playlist_title)
 print("==")
 
 # Create folders if needed
-if not os.path.isdir("playlists/" + playlist_title):
-    os.makedirs("playlists/" + playlist_title)    
+playlist_path = "playlists/" + playlist_title
+if not os.path.isdir(playlist_path):
+    os.makedirs(playlist_path)
+
+# Create/use the existing metadata file to save/retrieve current play state
+sdopfile = open(os.path.join(playlist_path, "SDOP.dat"), 'a')
 
 # Get videos list from the playlist response
 songs = []
@@ -71,23 +106,40 @@ for song in songs:
     print("Title [" + song["title"] + "] video_id [" + song["video_id"] + "]")
 
 print("Total [" + str(len(songs)) + "] songs")
+print("")
+
+
+# Get local folder playlist
+files = [f for f in os.listdir(playlist_path) if os.path.isfile(os.path.join(playlist_path, f)) and os.path.getsize(os.path.join(playlist_path, f))]
+files = sorted(files)
+print("Files " + str(files))
 
 youtube_video_url_prefix = "http://www.youtube.com/watch?v="
-youtube_video_to_mp3_service_url = "wwww.youtube-mp3.org"
-
-# sudo pip install youtube-dl
-import youtube_dl
-options = {
-    'outtmpl': 'playlists/' + playlist_title + '/%(id)s',
-    'extractaudio': True,
-    'format': 'bestaudio/best',
-    'audioformat': 'mp3',
-    'noplaylist': True
-}
-with youtube_dl.YoutubeDL(options) as ydl:
-    ydl.download([youtube_video_url_prefix + songs[0]['video_id']])
 
 
+from multiprocessing.dummy import Pool as ThreadPool
 
+pool = ThreadPool(int(getNumOfCores()))
+yt_vids_to_download = []
+for song in songs:
+    song_file = song['video_id'] + ".mp3"
+    if song_file in files:
+        print("File [" + song_file + "] already exists.")
+    else:
+        print("Marked YouTube song [" + song['video_id'] + "] for download")
+        yt_vids_to_download.append(youtube_video_url_prefix + song['video_id'])
 
+print("Started downloading songs...")
+startDLTimestamp = int(time.time())
+#pool.map(ydl.download, yt_vids_to_download)
+pool.map(downloadSong, yt_vids_to_download)
+pool.close()
+pool.join()
+print("DL DONE in [" + str(int(time.time()) - startDLTimestamp) + "] seconds")
+    
+
+play_song_command = "omxplayer -o local \"playlists/" + playlist_title + "/" + songs[0]['video_id'] + ".mp3\""
+#subprocess.Popen(play_song_command, shell=True, stdout=subprocess.PIPE)
+
+# TODO: sdopfile.close()
 
