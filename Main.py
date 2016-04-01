@@ -21,10 +21,21 @@ def getNumOfCores():
     return numOfCores
 
 
+def isVideoAvailable(youtube, video_id):
+    # Get the playlist name
+    response = youtube.videos().list(
+        part="status",
+        id=video_id
+        ).execute()
+    video = response["items"][0]
+    return (video['status']['uploadStatus'] == 'processed')
+
+
 # sudo pip install youtube-dl
 import youtube_dl
 
 def downloadSong(yt_song_url):
+    # Download the video
     options = {
         'outtmpl': playlist_path + '/%(id)s.mp3',
         'extractaudio': True,
@@ -126,8 +137,11 @@ for song in songs:
     if song_file in files:
         print("File [" + song_file + "] already exists.")
     else:
-        print("Marked YouTube song [" + song['video_id'] + "] for download")
-        yt_vids_to_download.append(youtube_video_url_prefix + song['video_id'])
+        if isVideoAvailable(youtube, song['video_id']):
+            print("Marked YouTube song [" + song['video_id'] + "] for download")
+            yt_vids_to_download.append(youtube_video_url_prefix + song['video_id'])
+        else:
+            print("Video [" + song['title'] + "] with id [" + song['video_id'] + "] is not available")
 
 print("Started downloading songs...")
 startDLTimestamp = int(time.time())
@@ -139,6 +153,7 @@ print("DL DONE in [" + str(int(time.time()) - startDLTimestamp) + "] seconds")
     
 
 play_song_command = "omxplayer -o local \"playlists/" + playlist_title + "/" + songs[0]['video_id'] + ".mp3\""
+print("Playing " + songs[0]['title'] + "...")
 #subprocess.Popen(play_song_command, shell=True, stdout=subprocess.PIPE)
 
 # TODO: sdopfile.close()
