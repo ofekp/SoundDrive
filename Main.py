@@ -1,6 +1,6 @@
 #!/usr/bin/python2.7
 
-import os
+import os, errno
 import sys
 import time
 import httplib2
@@ -13,10 +13,8 @@ from oauth2client.file import Storage
 from threading import Thread
 import re
 import logging
+import ConfigParser
 
-logging.basicConfig(filename='output.log',level=logging.DEBUG)
-
-logging.debug('Starting SoundDrive... [' + time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()) + ']')
 
 # To setup the network for WiFi refer to:
 # (awesome!) http://www.algissalys.com/how-to/how-to-raspberry-pi-multiple-wifi-setup-through-the-command-line
@@ -35,9 +33,36 @@ logging.debug('Starting SoundDrive... [' + time.strftime("%Y-%m-%d %H:%M:%S", ti
 # It is important to add the & at the end as this is a never ending script
 # It is also important to run as pi and not as root
 
+
+# ******
+# Consts
+# ======
+config_file_name = "sound_drive.cfg"
+time_string = time.strftime("%Y%m%d_%H%M%S", time.gmtime())
+curr_log_file_dir = "logs"
+curr_log_file_path = curr_log_file_dir + '/output_' + time_string + '.log'
+last_log_file_name = 'output.log'
+
+
 # =================
 # Private Functions
 # +++++++++++++++++
+
+def save_global_config(config_obj):
+    with open(config_file_name, 'wb') as config_file:
+        config_obj.write(config_file)
+
+
+def symlink_force(target, link_name):
+    try:
+        os.symlink(target, link_name)
+    except OSError, e:
+        if e.errno == errno.EEXIST:
+            os.remove(link_name)
+            os.symlink(target, link_name)
+        else:
+            raise e
+
 
 def internet_on():
     try:
@@ -47,10 +72,10 @@ def internet_on():
         pass
     return False
 
+
 def getNumOfCores():
     proc = Popen("nproc", shell=True, stdout=PIPE)
     numOfCores = proc.communicate()[0].strip()
-    print("Number of cores [" + numOfCores + "]")
     logging.debug("Number of cores [" + numOfCores + "]")
     return numOfCores
 
@@ -73,7 +98,7 @@ def downloadSong(yt_song_url):
     options = {
         'outtmpl': playlist_path + '/%(id)s.mp3',
         'extractaudio': True,
-        'format': 'm4a',
+        'format': 'm4a',  # Crucial so that mplayer will be able to play the songs
         #'audioformat': 'best',
         'noplaylist': True
     }
@@ -81,14 +106,73 @@ def downloadSong(yt_song_url):
         ydl.download([yt_song_url])
 
 
+# Get the playlist name using its ID (not being used currently)
+# TODO: should create the opposite function
+def get_playlist_name_from_id(youtube):
+    response = youtube.playlists().list(
+        part="snippet",
+        id=playlist_id
+        ).execute()
+    playlist_name = response["items"][0]["snippet"]["title"]
+    return playlist_name
+
+
+# **************
+# Initialization
+# ==============
+
+config = ConfigParser.RawConfigParser()
+
+# Create the logs dir if needed
+if not os.path.isdir(curr_log_file_dir):
+    os.makedirs(curr_log_file_dir)
+# Create a log file for this run
+logging.basicConfig(filename=curr_log_file_path, level=logging.DEBUG)
+# Create a symbolic link for easy access to the last log file
+symlink_force(curr_log_file_path, last_log_file_name)
+
+logging.debug('Starting SoundDrive... [' + time_string + ']')
+
+# Config file is created for the first time
+if config.read('sound_drive.cfg') == []:
+    config.add_section('playback')
+    config.set('playback', 'last_played_song_index', '0')
+    config.add_section('youtube')
+    config.set('youtube', 'playlist_name', 'music')  # TODO: Need to find a way for the user to config this
+    config.set('youtube', 'playlist_id', 'PLHNuMM2EDWXPmYA5g5WR818Hc08cCK6WV')  # TODO: Should be dynamically set according to the list's name
+    config.set('youtube', 'playlist', '')  # Depicts the playlist songs order and info  # TODO: this config should be in a config file inside the corresponding playlist folder
+    config.add_section('bluetooth')
+    config.set('bluetooth', 'device_name', 'SKODA')  # AP5037  # TODO: Need to find a way for the user to config this
+    save_global_config(config)
+
+
 # ====
 # Main
 # ++++
 
-storage = Storage("%s-oauth2.json" % sys.argv[0])
-credentials = storage.get()
+# Get important config fields
+playlist_name = config.get('youtube', 'playlist_name')
+playlist_id = config.get('youtube', 'playlist_id')
+songs = eval(config.get('youtube', 'playlist'))
+curr_song_index = config.getint('playback', 'last_played_song_index')
+if songs != None and len(songs) != 0:
+    curr_song_index = curr_song_index % len(songs)  # Just to be on the safe side
+bt_device_name = config.get('bluetooth', 'device_name')
+
+# Fields deduced from config
+playlist_path = "playlists/" + playlist_name
+
+# Create playlist folder if needed
+if not os.path.isdir(playlist_path):
+    os.makedirs(playlist_path)
+
+logging.debug("Playlist name [" + playlist_name + "]")
+logging.debug("==")
 
 if internet_on():
+
+    storage = Storage("%s-oauth2.json" % sys.argv[0])
+    credentials = storage.get()
 
     if credentials is None or credentials.invalid:
         print("Authentication needed")
@@ -108,22 +192,6 @@ if internet_on():
     from apiclient.discovery import build
 
     youtube = build('youtube', 'v3', http_auth)
-
-    playlist_id = "PLHNuMM2EDWXPmYA5g5WR818Hc08cCK6WV"
-
-    # Get the playlist name
-    response = youtube.playlists().list(
-        part="snippet",
-        id=playlist_id
-        ).execute()
-    playlist_title = response["items"][0]["snippet"]["title"]
-    print(playlist_title)
-    print("==")
-
-    # Create folders if needed
-    playlist_path = "playlists/" + playlist_title
-    if not os.path.isdir(playlist_path):
-        os.makedirs(playlist_path)
 
     # Get videos list from the playlist response
     songs = []
@@ -148,17 +216,14 @@ if internet_on():
         else:
             break;
 
-    for song in songs:
-        print("Title [" + song["title"] + "] video_id [" + song["video_id"] + "]")
-
-    print("Total [" + str(len(songs)) + "] songs")
-    print("")
-
+    # Write the songs array to the config file
+    config.set('youtube', 'playlist', songs)
+    save_global_config(config)
 
     # Get local folder playlist
     files = [f for f in os.listdir(playlist_path) if os.path.isfile(os.path.join(playlist_path, f)) and os.path.getsize(os.path.join(playlist_path, f))]
     files = sorted(files)
-    print("Files " + str(files))
+    logging.debug("Files in folder [" + playlist_path + "] are " + str(files))
 
     youtube_video_url_prefix = "http://www.youtube.com/watch?v="
 
@@ -169,31 +234,39 @@ if internet_on():
     for song in songs:
         song_file = song['video_id'] + ".mp3"
         if song_file in files:
-            print("File [" + song_file + "] already exists.")
+            logging.debug("File [" + song_file + "] already exists.")
         else:
             if isVideoAvailable(youtube, song['video_id']):
-                print("Marked YouTube song [" + song['video_id'] + "] for download")
+                logging.debug("Marked YouTube song [" + song['video_id'] + "] for download")
                 yt_vids_to_download.append(youtube_video_url_prefix + song['video_id'])
             else:
-                print("Video [" + song['title'] + "] with id [" + song['video_id'] + "] is not available")
+                logging.debug("Video [" + song['title'] + "] with id [" + song['video_id'] + "] is not available")
 
-    print("Started downloading songs...")
-    startDLTimestamp = int(time.time())
-    #pool.map(ydl.download, yt_vids_to_download)
-    pool.map(downloadSong, yt_vids_to_download)
-    pool.close()
-    pool.join()
-    print("DL DONE in [" + str(int(time.time()) - startDLTimestamp) + "] seconds")
-    if len(yt_vids_to_download) > 0:
-        with open(os.path.join(playlist_path, "SDOP.dat")) as sdopfile:
-            sdopfile.write("0")  # Will play from the first song
-
+    if len(yt_vids_to_download) == 0:
+        logging.debug("All playlist songs present")
+    else:
+        logging.debug("Started downloading songs...")
+        startDLTimestamp = int(time.time())
+        #pool.map(ydl.download, yt_vids_to_download)
+        pool.map(downloadSong, yt_vids_to_download)
+        pool.close()
+        pool.join()
+        logging.debug("YouTube download is DONE in [" + str(int(time.time()) - startDLTimestamp) + "] seconds")
+        if len(yt_vids_to_download) > 0:
+            # Start playing the playlist from the beginning
+            config.set('playback', 'last_played_song_index', '0')
+            save_global_config(config)
 else:
-    print("INFO: No internet connection found")
     logging.info("No internet connection found")
 
+
+# Print songs summary
+for song in songs:
+    logging.debug("    Title [" + song['title'] + "] video_id [" + song['video_id'] + "]")
+logging.debug("Total of [" + str(len(songs)) + "] songs")
+
 # TODO: remove songs from the playlist
-# TODO: SDOP file should keep the current state of the playlist and when it changes - play from first song
+# TODO: global config file should keep the current state of the playlist and when it changes - play from first song
 
 # To play the song in AUX
 #play_song_command = "omxplayer -o local \"playlists/" + playlist_title + "/" + songs[0]['video_id'] + ".mp3\""
@@ -217,19 +290,18 @@ else:
 logging.debug('BT start')
 
 from bluetoothctl import Bluetoothctl
-time_between_scans = 5; # Seconds
-max_num_of_attempts_to_scan = 10;
-bt_device_name = 'SKODA'  #"AP5037"
+time_between_scans = 5;  # Seconds
+max_num_of_attempts_to_scan = 3;
 
 bt = Bluetoothctl()
 bt.start_scan()
-print("Searching for BT device [" + bt_device_name + "]")
+logging.debug("Searching for BT device [" + bt_device_name + "]")
 bt_mac = None
 scan_attempt_num = 0
-conn_success = False  # TODO: change to False
+conn_success = False
 while not conn_success:
     devices = bt.get_available_devices()
-    print("Devices " + str(devices))
+    logging.debug("Devices " + str(devices))
     devMap = {}
     for dev in devices:
         devMap[dev['name']] = dev['mac_address'];
@@ -241,27 +313,27 @@ while not conn_success:
 
         logging.debug('trying to connect to [' + bt_device_name + ']')
 
-        print("Trust device [" + bt_device_name + "] with MAC [" + bt_mac + "]...")
+        logging.debug("Trust device [" + bt_device_name + "] with MAC [" + bt_mac + "]...")
         result = bt.trust(bt_mac)
-        print("Trust result [" + str(result) + "]")
+        logging.debug("Trust result [" + str(result) + "]")
 
-        print("Paring device [" + bt_device_name + "] with MAC [" + bt_mac + "]...")
+        logging.debug("Paring device [" + bt_device_name + "] with MAC [" + bt_mac + "]...")
         result = bt.pair(bt_mac)
-        print("Paring result [" + str(result) + "]")
+        logging.debug("Paring result [" + str(result) + "]")
 
-        print("Connecting to device [" + bt_device_name + "] with MAC [" + bt_mac + "]...")
+        logging.debug("Connecting to device [" + bt_device_name + "] with MAC [" + bt_mac + "]...")
         result = bt.connect(bt_mac)
-        print("Connection result [" + str(result) + "]")
+        logging.debug("Connection result [" + str(result) + "]")
         if result:
             logging.debug('successful connection to [' + bt_device_name + ']')
             conn_success = True
+
     if not conn_success:
         logging.debug("Could not find device [" + bt_device_name + "] searching again in [" + str(time_between_scans) + "] seconds")
-        print("Could not find device [" + bt_device_name + "] searching again in [" + str(time_between_scans) + "] seconds")
         scan_attempt_num += 1
         if scan_attempt_num > max_num_of_attempts_to_scan:
-            print("Could not find device [" + bt_device_name + "] total number of attempts was [" + max_num_of_attempts_to_scan + "] aborting...")
-            exti(1)
+            logging.debug("Could not find device [" + bt_device_name + "] total number of attempts was [" + max_num_of_attempts_to_scan + "] aborting...")
+            os.system("sudo shutdown -h now")
         time.sleep(time_between_scans)
 
 logging.debug('BT end')
@@ -298,7 +370,7 @@ raw_prev = ["> 02 46 20 0C 00 08 00 42 00 30 11 0E 00 48 7C 4C 00", "> 02 46 20 
 raw_next = ["> 02 46 20 0C 00 08 00 42 00 30 11 0E 00 48 7C 4B 00", "> 02 46 20 0C 00 08 00 42 00 40 11 0E 00 48 7C CB 00"]
 
 # raw_play_re = re.compile(r"^> (?:[0-9,A-F]{2} ){8}00 40 11 0E 00 48 7C C4 00|^> (?:[0-9,A-F]{2} ){8}00 40 11 0E 00 48 7C C6 00") # AP
-raw_play_re = re.compile(r"^> (?:[0-9,A-F]{2} ){10}11 0E 00 48 7C CC 00") # SKODA
+raw_prev_re = re.compile(r"^> (?:[0-9,A-F]{2} ){10}11 0E 00 48 7C CC 00") # SKODA
 # raw_next_re = re.compile(r"^> (?:[0-9,A-F]{2} ){8}00 40 11 0E 00 48 7C CB 00")
 raw_next_re = re.compile(r"^> (?:[0-9,A-F]{2} ){10}11 0E 00 48 7C CB 00") # SKODA
 # General code to print the relevant BT mutimedia buttons presses:
@@ -308,40 +380,38 @@ def detect_bt_mm_press():
     global curr_song_play_thread
     global is_song_playing
     global shutdown_pi
-    logging.debug('Started listening to mm bt presses')
     last_pause_ts = 0.0
-    print("Listening to BT multimedia key presses")
+    logging.debug("Listening to BT multimedia key presses")
     mm_press_re = re.compile(r'^>.{50}')
     proc = Popen(['sudo', 'hcidump', '--raw', '-i', 'hci0'], stdout=PIPE)
     press_state = 0
     for line in iter(proc.stdout.readline, ''):
         if curr_song_play_pipe != None and len(line) == 54 and mm_press_re.match(line) != None:
-            sys.stdout.write(line)
-            if raw_play_re.match(line) != None:
-                print("pause")
+            logging.debug(line)
+            if raw_prev_re.match(line) != None:
+                logging.debug("pause")
                 try:
                     curr_song_play_pipe.stdin.write('p')
                 except:
-                    print("WARNING: No song is playing at the moment")
+                    logging.warning("Pause received but no song is playing at the moment")
                 curr_time = time.time()
                 if curr_time < last_pause_ts + 0.8:
                     # Shutting down PI
                     shutdown_pi = True
                     is_song_playing = False
-                    print("Requested to shutdown, bye bye!")
                     logging.debug("Requested to shutdown, bye bye!")
                     os.system("sudo shutdown -h now")
                     return
                 last_pause_ts = curr_time
             if raw_next_re.match(line) != None:
-                print("next")
+                logging.debug("next")
                 try:
                     curr_song_play_pipe.stdin.write('q')
                 except:
-                    print("Patience my love...")
+                    logging.debug("Next received but no song is being played at the moment")
                 # Switching to the next song
                 if curr_song_play_thread.is_alive():
-                    print("Skipping current song...")
+                    logging.debug("Skipping current song...")
                     is_song_playing = False
 
 
@@ -358,7 +428,6 @@ def play_songs():
         song_file_name = song['video_id'] + ".mp3"
         song_file_path = playlist_path + "/" + song_file_name
         song_file_path = unicode(song_file_path).encode('utf8')
-        print("Playing " + song['title'] + "... path to song [" + song_file_path + "]")
         logging.debug("Playing " + song['title'] + "... path to song [" + song_file_path + "]")
         curr_song_play_pipe = None
         curr_song_play_pipe = Popen(['mplayer', '-quiet', '-ao', 'pulse', '{0}'.format(song_file_path)], stdin=PIPE, stdout=PIPE)
@@ -374,9 +443,9 @@ def play_songs():
             return
 
         curr_song_index += 1
-        # Write this to the SDOP file
-        with open(os.path.join(playlist_path, "SDOP.dat"), 'w') as sdopfile:
-            sdopfile.write(str(curr_song_index))
+        # Write this to the global config file
+        config.set('playback', 'last_played_song_index', curr_song_index)
+        save_global_config(config)
 
 
 # Create a thread to listen to BT multimedia key presses
@@ -385,24 +454,11 @@ bt_dump_therad = Thread(target=detect_bt_mm_press)
 #bt_dump_therad.daemon = True
 bt_dump_therad.start()
 
-# Create/use the existing metadata file to save/retrieve current play state
-# sdopfile = open(os.path.join(playlist_path, "SDOP.dat"), 'a')
-
 # Play the first song
 shutdown_pi = False
-logging.debug("Retrieving last song index")
-with open(os.path.join(playlist_path, "SDOP.dat"), 'r') as sdopfile:
-    line = sdopfile.readline()
-    if line == None or line == "":
-        curr_song_index = 0
-    else:
-        curr_song_index = int(line.strip())
-        curr_song_index = curr_song_index % len(songs)
-
 logging.debug("Initializing play-songs-thread")
 curr_song_play_thread = Thread(target=play_songs)
 #curr_song_play_thread.daemon = True
-logging.debug("Strting play-songs-thread")
 curr_song_play_thread.start()
 
 while True:
