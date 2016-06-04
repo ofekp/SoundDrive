@@ -25,6 +25,7 @@ import time
 import pexpect
 import subprocess
 import sys
+import re
 
 class BluetoothctlError(Exception):
     """This exception is raised, when bluetoothctl fails to start."""
@@ -135,6 +136,44 @@ class Bluetoothctl:
         else:
             return out
 
+    def get_connectable_devices(self):
+        """Get a  list of connectable devices.
+        Must install 'sudo apt-get install bluez blueztools' to use this"""
+        try:
+            res = []
+            out = subprocess.check_output(["hcitool", "scan"])  # Requires 'apt-get install bluez'
+            out = out.split("\n")
+            device_name_re = re.compile("^\t([0-9,:,A-F]{17})\t(.*)$")
+            for line in out:
+                device_name = device_name_re.match(line)
+                if device_name != None:
+                    res.append({
+                            "mac_address": device_name.group(1),
+                            "name": device_name.group(2)
+                        })
+        except BluetoothctlError, e:
+            print(e)
+            return None
+        else:
+            return res
+
+    def is_connected(self):
+        """Returns True if there is a current connection to any device, otherwise returns False"""
+        try:
+            res = False
+            out = subprocess.check_output(["hcitool", "con"])  # Requires 'apt-get install bluez'
+            out = out.split("\n")
+            mac_addr_re = re.compile("^.*([0-9,:,A-F]{17}).*$")
+            for line in out:
+                mac_addr = mac_addr_re.match(line)
+                if mac_addr != None:
+                    res = True
+        except BluetoothctlError, e:
+            print(e)
+            return None
+        else:
+            return res
+
     def pair(self, mac_address):
         """Try to pair with a device by mac address."""
         try:
@@ -195,6 +234,22 @@ class Bluetoothctl:
             success = True if res == 1 else False
             return success
 
+    def start_agent(self):
+        """Start agent"""
+        try:
+            out = self.get_output("agent on")
+        except BluetoothctlError, e:
+            print(e)
+            return None
+
+    def default_agent(self):
+        """Start default agent"""
+        try:
+            out = self.get_output("default-agent")
+        except BluetoothctlError, e:
+            print(e)
+            return None
+
 if __name__ == "__main__":
 
     print("Init bluetooth...")
@@ -207,6 +262,3 @@ if __name__ == "__main__":
         time.sleep(1)
 
     print(bl.get_discoverable_devices())
-
-
-
