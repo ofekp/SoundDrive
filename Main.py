@@ -49,6 +49,9 @@ logs_retention = 30
 # Private Functions
 # +++++++++++++++++
 
+def play_info_sound(sound_file):
+    bt_connected_sound_pipe = Popen(['mplayer', '-quiet', '-ao', 'pulse', '{0}'.format(sound_file)], stdin=PIPE, stdout=PIPE)
+
 def apply_log_retention(logs_retention):
     cutoff = time.time() - (logs_retention * 86400)
     log_files = os.listdir(curr_log_file_dir)
@@ -107,6 +110,7 @@ def isVideoAvailable(youtube, video_id):
 
 
 # sudo pip install youtube-dl
+# Important to update! use 'sudo pip install -U youtube-dl' for that
 import youtube_dl
 
 def downloadSong(yt_song_url):
@@ -283,8 +287,9 @@ while not conn_success:
             os.system("sudo shutdown -h now")
         time.sleep(time_between_scans)
 
-bt_connect_sound_file = "bt_connect_01.wav"
-bt_connected_sound_pipe = Popen(['mplayer', '-quiet', '-ao', 'pulse', '{0}'.format(bt_connect_sound_file)], stdin=PIPE, stdout=PIPE)
+# Beep sound taken from 'http://www.soundjay.com/beep-sounds-3.html'
+time.sleep(3)
+play_info_sound("bt_connect_01.wav")
 logging.debug('BT end')
 time.sleep(15)  # This is crucial to get things working in Skoda!
 logging.debug('starting main threads')
@@ -330,9 +335,15 @@ def perform_cmd():
     global keep_current_song_index
     global curr_song_start_ts
 
-    time.sleep(1.0)
+    time.sleep(2.0)  # Better use less, but for Skoda this was optimal
     logging.debug("button_press_arr " + str(button_press_arr))
     new_cmd_under_way = True
+
+    # Add the following to debug the button clicks
+    #new_cmd_under_way = False
+    #del button_press_arr[:]
+    #return
+
     if len(button_press_arr) == 1 and button_press_arr[0] == "PREV":
         # Pause current song
         logging.debug("BT command: PAUSE")
@@ -358,7 +369,8 @@ def perform_cmd():
     elif len(button_press_arr) == 2 and button_press_arr[0] == "PREV" and button_press_arr[1] == "PREV":
         # Previous song
         logging.debug("BT command: PREV")
-        if time.time() < curr_song_start_ts + 7.0:
+        logging.debug(str(time.time()) + " <-> " + str(curr_song_start_ts + 5.0))
+        if time.time() < curr_song_start_ts + 10.0:  # 10 seconds
             curr_song_index -= 1
 
         if curr_song_play_thread.is_alive():
@@ -466,12 +478,15 @@ def play_songs():
 
 
 def sync_playlist():
+    global songs
     global curr_song_index
     global keep_current_song_index
     global is_song_playing
     global curr_song_play_pipe
 
     if not internet_on():
+        # Sound taken from http://soundbible.com/1540-Computer-Error-Alert.html
+        play_info_sound("sync_failed_01.mp3")
         logging.debug("No internet connection, aborting playlist sync process.")
         return
 
@@ -480,6 +495,8 @@ def sync_playlist():
     except:
         logging.warning("No song to stop playing for the sync process")
 
+    # Sound taken from https://appraw.com/ringtone/input-xxk4r
+    play_info_sound("sync_started_01.wav")
     storage = Storage("%s-oauth2.json" % sys.argv[0])
     credentials = storage.get()
 
@@ -585,6 +602,9 @@ def sync_playlist():
             logging.debug("Playing updated playlist from start")
             keep_current_song_index = True # Prevents +1 to the currently set index in the play_songs thread
             is_song_playing = False
+
+    # Sound taken from https://appraw.com/ringtone/cool-notification-2-qjmxk
+    play_info_sound("sync_finished_01.mp3")
 
 
 # Create a thread to listen to BT multimedia key presses
