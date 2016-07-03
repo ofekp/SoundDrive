@@ -496,7 +496,7 @@ def sync_playlist():
         logging.warning("No song to stop playing for the sync process")
 
     # Sound taken from https://appraw.com/ringtone/input-xxk4r
-    play_info_sound("sync_started_01.wav")
+    play_info_sound("sync_started_01.mp3")
     storage = Storage("%s-oauth2.json" % sys.argv[0])
     credentials = storage.get()
 
