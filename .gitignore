@@ -1,2 +1,7 @@
 /playlists
+/logs
 *.json
+*.log
+*.pyc
+*.cfg
+output

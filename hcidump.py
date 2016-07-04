@@ -14,7 +14,7 @@ class Hcidump:
 
     def __init__(self):
         #out = subprocess.check_output("rfkill unblock bluetooth", shell = True)
-        self.child = pexpect.spawn('sudo /bin/bash -c "sudo hcidump --raw -i hci0 | grep -E -e \'^>.{50,}\'"', echo = True)
+        self.child = pexpect.spawn('sudo /bin/bash -c "sudo hcidump --raw -i hci0 | grep -E -e \'^>.{51}\s$\'"', echo = True)
 
     def get_output(self):
         """Run a command in bluetoothctl prompt, return output as a list of lines."""
