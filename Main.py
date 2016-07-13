@@ -218,12 +218,18 @@ logging.debug("Total of [" + str(len(songs)) + "] songs")
 # also before the script can be used, python's 'pexpect' module must be installed
 # To do that use 'pip install pexpect'
 
-logging.debug('BT start')
+logging.debug('Starting pulseaudio daemon...')
+# must use 'sudo adduser root pulse-access' first
+os.system("su - pi -c \"pulseaudio -D\"")
+time.sleep(3)
+logging.debug('pulseaudio daemon started')
+
+logging.debug('BT section start')
 
 # Contributed code to 'https://gist.github.com/egorf/66d88056a9d703928f93/forks'
 from bluetoothctl import Bluetoothctl
 time_between_scans = 5;  # Seconds
-max_num_of_attempts_to_scan = 3;
+max_num_of_attempts_to_scan = 30
 
 bt = Bluetoothctl()
 bt.start_scan()
@@ -246,7 +252,10 @@ while not conn_success:
         devList.append(dev['name'])
 
     pairable_devices = list(set(bt_device_names).intersection(devList))
-    logging.debug("intersection: [" + str(pairable_devices) + "]")
+    logging.debug("intersection: " + str(pairable_devices))
+    if "AP5037" in pairable_devices:
+        # Prefer the test device
+        pairable_devices = ["AP5037"]
     if len(pairable_devices) == 1:
         bt_device_name = pairable_devices[0]
         logging.debug("Found pairable device [" + bt_device_name + "]")
@@ -291,7 +300,20 @@ while not conn_success:
 time.sleep(3)
 play_info_sound("bt_connect_01.wav")
 logging.debug('BT end')
-time.sleep(15)  # This is crucial to get things working in Skoda!
+hcidump_wait = 0
+while True:
+    if bt.is_connected():
+        logging.debug("Connection verified by hcidump")
+        break;
+    time.sleep(1)
+    hcidump_wait += 1
+    if hcidump_wait > 20:
+        break;
+
+# This is crucial to get things working in Skoda! Need to wait ~15 seconds before starting.
+if hcidump_wait < 15:
+    time.sleep(15 - hcidump_wait)
+play_info_sound("bt_connect_01.wav")
 logging.debug('starting main threads')
 
 # Now playing the song but also listening to events from the bluetooth device
@@ -311,7 +333,7 @@ logging.debug('starting main threads')
 # This can be done by editting the file '/etc/bluetooth/main.conf'
 # refer to 'http://linux.die.net/man/5/hcid.conf' to find out what changes to make
 
-# Another important thing to do is to add a module to /etc/pulse/deafule.pa:
+# Another important thing to do is to add a module to /etc/pulse/deafult.pa:
 # load-module module-switch-on-connect
 # This will change the device to BT when it is connected
 # for more information refer to: https://wiki.debian.org/BluetoothUser/a2dp
@@ -379,14 +401,24 @@ def perform_cmd():
                 curr_song_play_pipe.stdin.write('q')
             except:
                 logging.debug("No song is being played at the moment")
-
     elif len(button_press_arr) == 3 and button_press_arr[0] == "PREV" and button_press_arr[1] == "PREV" and button_press_arr[2] == "PREV":
         # Shutdown Pi
+        logging.debug("BT command: SHUTDOWN")
         shutdown_pi = True
         is_song_playing = False
         logging.debug("Requested to shutdown, bye bye!")
         os.system("sudo shutdown -h now")
         return
+    elif len(button_press_arr) == 2 and button_press_arr[0] == "PREV" and button_press_arr[1] == "NEXT":
+        logging.debug("BT command: RESTART_PLAYLIST")
+        curr_song_index = 0
+
+        if curr_song_play_thread.is_alive():
+            keep_current_song_index = True
+            try:
+                curr_song_play_pipe.stdin.write('q')
+            except:
+                logging.debug("No song is being played at the moment")
     else:
         logging.debug("Unrecognized BT command")
     new_cmd_under_way = False
