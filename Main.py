@@ -155,17 +155,17 @@ apply_log_retention(logs_retention)
 logging.debug('Starting SoundDrive... [' + time_string + ']')
 
 # Config file is created for the first time
-if config.read('sound_drive.cfg') == []:
+if not os.path.isfile(config_file_name) or os.stat(config_file_name).st_size == 0 or config.read(config_file_name) == []:
+    logging.debug("Could not find config");
     config.add_section('playback')
     config.set('playback', 'last_played_song_index', '0')
     config.add_section('youtube')
     config.set('youtube', 'playlist_name', 'music')  # TODO: Need to find a way for the user to config this
     config.set('youtube', 'playlist_id', 'PLHNuMM2EDWXPmYA5g5WR818Hc08cCK6WV')  # TODO: Should be dynamically set according to the list's name
-    config.set('youtube', 'playlist', '')  # Depicts the playlist songs order and info  # TODO: this config should be in a config file inside the corresponding playlist folder
+    config.set('youtube', 'playlist', '[]')  # Depicts the playlist songs order and info  # TODO: this config should be in a config file inside the corresponding playlist folder
     config.add_section('bluetooth')
     config.set('bluetooth', 'device_names', '[\"SKODA\", \"AP5037\"]')  # TODO: Need to find a way for the user to config this
     save_global_config(config)
-
 
 # ====
 # Main
@@ -480,6 +480,15 @@ def play_songs():
     global keep_current_song_index
     global curr_song_start_ts
     logging.debug("play-songs-thread has started")
+
+    if len(songs) == 0:
+        logging.debug("No songs exist, trying to synch playlist...")
+        # Sync playlist
+        sync_playlist()
+        if len(songs) == 0:
+            logging.debug("Could not synch playlist or the playlist is empty, aborting...")
+            exit(1)
+
     while True:
         time.sleep(1)
         curr_song_index = curr_song_index % len(songs)  # Loop over the playlist
