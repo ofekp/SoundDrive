@@ -381,10 +381,13 @@ def play_songs():
 
         if not keep_current_song_index:
             curr_song_index += 1
-            # Write this to the global config file
-            config.set('playback', 'last_played_song_index', curr_song_index)
-            save_global_config(config)
-        keep_current_song_index = False
+        # Reset flag to default value
+		keep_current_song_index = False
+		
+        # Write this to the global config file
+        config.set('playback', 'last_played_song_index', curr_song_index)
+        save_global_config(config)
+
 
 def sync_playlist():
     global songs
@@ -884,8 +887,8 @@ while True:
         break;
 
 # This is crucial to get things working in Skoda! Need to wait ~15 seconds before starting.
-if hcidump_wait < 15:
-    time.sleep(15 - hcidump_wait)
+if hcidump_wait < 20:
+    time.sleep(20 - hcidump_wait)
 play_info_sound("bt_connect_01.wav")
 logging.debug('starting main threads')
 
