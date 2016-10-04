@@ -382,7 +382,7 @@ def play_songs():
         if not keep_current_song_index:
             curr_song_index += 1
         # Reset flag to default value
-		keep_current_song_index = False
+        keep_current_song_index = False
 		
         # Write this to the global config file
         config.set('playback', 'last_played_song_index', curr_song_index)
@@ -410,7 +410,7 @@ def sync_playlist():
         
     # TODO: this is for debug only (remove when done!)
     try:
-        ipaddr = os.system("ifconfig | grep -A 1 wlan0 | grep 'inet addr:' | cut -d':' -f2 | cut -d' ' -f1")
+        ipaddr = check_output("ifconfig | grep -A 1 wlan0 | grep 'inet addr:' | cut -d':' -f2 | cut -d' ' -f1", shell=True)
         sendNotification(ipaddr)
     except:
         logging.warning("Could not send message to phone...")
