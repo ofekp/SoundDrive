@@ -58,7 +58,7 @@
 #    }
 
 # Ad-Hoc network for configuration:
-# Refer ro https://spin.atomicobject.com/2013/04/22/raspberry-pi-wireless-communication/
+# Refer to https://spin.atomicobject.com/2013/04/22/raspberry-pi-wireless-communication/
 # Do not forget the DHCP part
 # TODO: Find out how to switch between ad-hoc and regular WiFI
 
@@ -71,12 +71,15 @@
 
 # ** Intermittent BT sound stops bug: **
 # Experiments:
-#    1) # Refer to: https://www.bitpi.co/2015/02/14/prevent-raspberry-pi-from-sleeping/
+#    1) Refer to: https://www.bitpi.co/2015/02/14/prevent-raspberry-pi-from-sleeping/
 #    2) Also did this and not sure if it helps: https://www.raspberrypi.org/forums/viewtopic.php?f=29&t=35054
 #    3) in /etc/pulse/default.pa - commented out package 'load-module module-suspend-on-idle'
 #       refer to: https://dbader.org/blog/crackle-free-audio-on-the-raspberry-pi-with-mpd-and-pulseaudio
+#       --> This actually made things worse and pausing the playback did not clear the hcidump so I was not able to
+#           perform commands that involved more than a single click
 #    4) Need to try and disable hcidump to see if this is causing the sound stops
 #       To get the ip address: os.system("ifconfig | grep -A 1 wlan0 | grep 'inet addr:' | cut -d':' -f2 | cut -d' ' -f1")
+#    5) Tried this: https://fedoraproject.org/wiki/How_to_debug_PulseAudio_problems
 
 import os, errno
 import sys
@@ -93,6 +96,7 @@ import re
 import logging
 import ConfigParser
 import json
+import RPi.GPIO as GPIO  # PIR
 
 # ******
 # Consts
@@ -108,6 +112,38 @@ logs_retention = 30
 # =================
 # Private Functions
 # +++++++++++++++++
+
+def switchToAdHocMode():
+	
+	return
+
+
+def adHocModeListen():
+    logging.debug("Detecting ad-hoc mode...")
+    GPIO.setwarnings(False)
+    GPIO.setmode(GPIO.BOARD)
+    input_pin = 11
+    GPIO.setup(input_pin, GPIO.OUT)
+    GPIO.output(input_pin, 0)
+    GPIO.setup(input_pin, GPIO.IN)
+    timestamp_first_on = 0
+    val = GPIO.input(input_pin)
+    if val == 1:
+        timestamp_first_on = int(time.time())
+        # Wait for val to be 1 for 6 seconds
+        while int(time.time()) - 6 < timestamp_first_on:
+            val = GPIO.input(input_pin)
+            logging.debug("6 seconds.... " + str(val))
+            if val == 0:
+                timestamp_first_on = 0
+                break
+            time.sleep(0.1)
+        if timestamp_first_on > 0:
+            logging.debug("Switching to ad-hoc mode...")
+        	switchToAdHocMode()
+            return
+    logging.debug("Continuing in regular mode...")
+
 
 def play_info_sound(sound_file):
     bt_connected_sound_pipe = Popen(['mplayer', '-quiet', '-ao', 'pulse', '{0}'.format(sound_file)], stdin=PIPE, stdout=PIPE)
@@ -739,6 +775,8 @@ if not os.path.isfile(config_file_name) or os.stat(config_file_name).st_size == 
     
 # Starting flask webserver
 if __name__ == "__main__":  # TODO: is this needed
+	adHocModeListen()
+
 	logging.debug("Starting Flask webserver...")
 	webserver_therad = Thread(target=start_webserver)
 	#webserver_therad.daemon = True
