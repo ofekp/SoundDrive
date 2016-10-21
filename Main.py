@@ -59,8 +59,24 @@
 
 # Ad-Hoc network for configuration:
 # Refer to https://spin.atomicobject.com/2013/04/22/raspberry-pi-wireless-communication/
-# Do not forget the DHCP part
-# TODO: Find out how to switch between ad-hoc and regular WiFI
+# Do not forget the DHCP part (package dhcp3-server from the tutorial is deprecated)
+# DHCP server:
+# sudo apt-get install isc-dhcp-server
+# sudo vim /etc/dhcp/dhcpd.conf
+#   default-lease-time 600;
+#   max-lease-time 7200;
+#   option subnet-mask 255.255.255.0;
+#   option broadcast-address 192.168.1.255;
+#   #option routers 192.168.1.254;
+#   option domain-name-servers 192.168.1.1;
+#   option domain-name "mydomain.example";
+#   
+#   subnet 192.168.1.0 netmask 255.255.255.0 {
+#     range 192.168.1.10 192.168.1.10;
+#   } 
+# sudo service isc-dhcp-server restart
+# sudo service isc-dhcp-server start
+# sudo service isc-dhcp-server stop 
 
 # For auto start at boot time:
 # sudo vim /etc/rc.local
@@ -75,11 +91,37 @@
 #    2) Also did this and not sure if it helps: https://www.raspberrypi.org/forums/viewtopic.php?f=29&t=35054
 #    3) in /etc/pulse/default.pa - commented out package 'load-module module-suspend-on-idle'
 #       refer to: https://dbader.org/blog/crackle-free-audio-on-the-raspberry-pi-with-mpd-and-pulseaudio
+#       "tsched=0"
 #       --> This actually made things worse and pausing the playback did not clear the hcidump so I was not able to
 #           perform commands that involved more than a single click
+#       (reverted)
 #    4) Need to try and disable hcidump to see if this is causing the sound stops
 #       To get the ip address: os.system("ifconfig | grep -A 1 wlan0 | grep 'inet addr:' | cut -d':' -f2 | cut -d' ' -f1")
 #    5) Tried this: https://fedoraproject.org/wiki/How_to_debug_PulseAudio_problems
+#    6) Tried to change settings in /etc/pulse/daemon.conf
+#       cpu-limit was changed from no to yes (reverted to no)
+#       realtime-priority was changed from 5 to 8 (remained)
+#    7) Checking the system log "cat /var/log/syslog* | grep -i pulse"
+#       This shows a lot of good information including the skips od pulseaudio
+#    8) Updated bluez 'sudo apt-get upgrade bluez'
+#       then checked the version with "dpkg --status bluez | grep '^Version:'" OR "bluetoothd -v"
+#    9) Updated Alsa - 'sudo apt-get upgrade alsa-utils' AND 'sudo apt-get upgrade alsa-oss' AND 'sudo apt-get upgrade libasound2'
+#    10) Changed /etc/asound.conf to be as written in the end of this page:
+#        https://github.com/raspberrypi/firmware/issues/62
+#    11) tried configuring according to 'https://www.raspberrypi.org/forums/viewtopic.php?t=68779'
+#    12) tried to edit '/etc/pulse/daemon.conf' with cpu-limit=yes and realtime-priority=8 again but without the ';'
+#
+# Track Information Display
+# Apparently it is done using AVRCP and not A2DP
+# https://www.raspberrypi.org/forums/viewtopic.php?p=635509#p635509
+# https://www.reddit.com/r/raspberry_pi/comments/2mpliz/for_all_of_you_that_used_my_incar_bluetooth_guide/
+# might need to get bluetooth-player to list the players, because '/org/bluez/hci0/dev_...' specified in the
+# previous link is not working
+# sudo cat /var/lib/bluetooth/00:1A:7D:DA:71:13/27:76:46:A7:54:BF/info
+# OK, to find the path to the device I used cat /var/log/syslog* | grep "org/" and found "/org/bluez/hci0/dev_27_76_46_A7_54_BF/fd2" (fd0 and fd1 also)
+# So far I got 'dbus-send --system --type=method_call --print-reply --dest=org.bluez /org/bluez/hci0/dev_27_76_46_A7_54_BF/fd2 \ org.bluez.MediaPlayer1.Stop'
+# But this fails. Saw in 'https://bugs.launchpad.net/ubuntu/+source/hwinfo/+bug/775542' suggest to install 'hal' package, but this did not help
+#
 
 import os, errno
 import sys
@@ -97,6 +139,7 @@ import logging
 import ConfigParser
 import json
 import RPi.GPIO as GPIO  # PIR
+import filecmp
 
 # ******
 # Consts
@@ -113,8 +156,31 @@ logs_retention = 30
 # Private Functions
 # +++++++++++++++++
 
-def switchToAdHocMode():
+def toggleAdHocMode(isAdHocMode):
+	interfaces_file_to_use = ""
+	if isAdHocMode:
+		os.system("sudo service isc-dhcp-server start")
+		interfaces_file_to_use = "interfaces_ad_hoc"
+	else:
+		os.system("sudo service isc-dhcp-server stop")
+		interfaces_file_to_use = "interfaces_regular"
 	
+	if filecmp.cmp("/etc/network/interfaces", interfaces_file_to_use):
+		logging.debug("Interfaces file is not changed, skipping interface restart...")
+		return
+		
+	if not isAdHocMode:
+		logging.debug("Removing local address [192.168.1.1] to renew DHCP lease")
+		os.system("sudo ip address del 192.168.1.1/24 dev wlan0")  # renew DHCP lease
+	time.sleep(1.0)
+	os.system("sudo cp " + interfaces_file_to_use + " /etc/network/interfaces")
+	time.sleep(1.0)
+	os.system("sudo ifdown wlan0 --force")
+	time.sleep(2.0)
+	os.system("sudo ifup wlan0 --force")
+	time.sleep(2.0)
+	logging.debug("Ad-hoc mode configured. Rebooting...")
+	os.system("sudo reboot")
 	return
 
 
@@ -140,9 +206,10 @@ def adHocModeListen():
             time.sleep(0.1)
         if timestamp_first_on > 0:
             logging.debug("Switching to ad-hoc mode...")
-        	switchToAdHocMode()
+            toggleAdHocMode(True)
             return
     logging.debug("Continuing in regular mode...")
+    toggleAdHocMode(False)
 
 
 def play_info_sound(sound_file):
@@ -263,6 +330,7 @@ def perform_cmd():
     global new_cmd_under_way
     global keep_current_song_index
     global curr_song_start_ts
+    global hcidump_enabled
 
     time.sleep(2.0)  # Better use less, but for Skoda this was optimal
     logging.debug("button_press_arr " + str(button_press_arr))
@@ -322,6 +390,9 @@ def perform_cmd():
                 curr_song_play_pipe.stdin.write('q')
             except:
                 logging.debug("No song is being played at the moment")
+    elif len(button_press_arr) == 2 and button_press_arr[0] == "NEXT" and button_press_arr[1] == "PREV":
+        logging.debug("BT command: DISABLE_HCIDUMP")
+        hcidump_enabled = False
     else:
         logging.debug("Unrecognized BT command")
     new_cmd_under_way = False
@@ -374,6 +445,7 @@ def detect_bt_mm_press():
                 perform_cmd_thread = Thread(target=perform_cmd)
                 perform_cmd_thread.start()
     logging.debug("Stopped hcidump thread")
+    os.system("sudo killall hcidump")
     play_info_sound("sync_failed_01.mp3")  # TODO: remove this
     
     
