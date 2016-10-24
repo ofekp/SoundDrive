@@ -150,7 +150,7 @@ curr_log_file_dir = "logs"
 curr_log_file_path = curr_log_file_dir + '/output_' + time_string + '.log'
 last_log_file_name = 'output.log'
 logs_retention = 30
-
+auth_code = None  # Only used when authenticating
 
 # =================
 # Private Functions
@@ -473,19 +473,20 @@ def play_songs():
         song_file_name = song['video_id'] + ".mp3"
         song_file_path = playlist_path + "/" + song_file_name
         song_file_path = unicode(song_file_path).encode('utf8')
-        logging.debug("Playing " + song['title'] + "... path to song [" + song_file_path + "]")
-        curr_song_play_pipe = Popen(['mplayer', '-quiet', '-ao', 'pulse', '{0}'.format(song_file_path)], stdin=PIPE, stdout=PIPE)
-        curr_song_start_ts = time.time()
-        #curr_song_play_pipe.communciate()
-        is_song_playing = True
-        while is_song_playing:
-            try:
-                curr_song_play_pipe.stdin.write('j')  # Should do nothing
-                time.sleep(1)
-            except:
-                is_song_playing = False
-        if shutdown_pi == True:
-            return
+        if os.path.isfile(song_file_path):
+            logging.debug("Playing " + song['title'] + "... path to song [" + song_file_path + "]")
+            curr_song_play_pipe = Popen(['mplayer', '-quiet', '-ao', 'pulse', '{0}'.format(song_file_path)], stdin=PIPE, stdout=PIPE)
+            curr_song_start_ts = time.time()
+            #curr_song_play_pipe.communciate()
+            is_song_playing = True
+            while is_song_playing:
+                try:
+                    curr_song_play_pipe.stdin.write('j')  # Should do nothing
+                    time.sleep(1)
+                except:
+                    is_song_playing = False
+            if shutdown_pi == True:
+                return
 
         if not keep_current_song_index:
             curr_song_index += 1
@@ -504,6 +505,7 @@ def sync_playlist():
     global is_song_playing
     global curr_song_play_pipe
     global playlist_id
+    global auth_code
 
     if not internet_on():
         # Sound taken from http://soundbible.com/1540-Computer-Error-Alert.html
@@ -537,8 +539,12 @@ def sync_playlist():
         auth_uri = flow.step1_get_authorize_url()
         print(auth_uri)
         webbrowser.open_new(auth_uri)
-        auth_code = raw_input('Enter the auth code: ')
+        while auth_code == None:
+            logging.debug("Waiting for user to enter auth_code from Google...")
+            time.sleep(5)
+        # auth_code = raw_input('Enter the auth code: ')
         credentials = flow.step2_exchange(auth_code)
+        auth_code = None
         storage.put(credentials)
 
     http_auth = credentials.authorize(httplib2.Http())
@@ -695,16 +701,21 @@ def downloadSong(yt_song_url):
         #'audioformat': 'best',
         'noplaylist': True
     }
-    with youtube_dl.YoutubeDL(options) as ydl:
-        ydl.download([yt_song_url])
-        
+    try:
+        with youtube_dl.YoutubeDL(options) as ydl:
+            ydl.download([yt_song_url])
+        logging.debug("Downloaded song [" + yt_song_url + "]")
+        # TODO: play_info_sound("song_download_complete.mp3")
+    except:
+        logging.debug("Could not download song [" + yt_song_url + "]")
+        # TODO: play_info_sound("song_download_failed.mp3")    
 
 # ****************
 # Flask web server
 # ================
 # refer to https://code.tutsplus.com/tutorials/creating-a-web-app-from-scratch-using-python-flask-and-mysql--cms-22972
 # requires 'sudo pip install flask' or 'sudo apt-get python-flask'
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 app = Flask(__name__)
 
 def executeCommand(commandName):
@@ -760,7 +771,11 @@ def index():
 @app.route('/showHome', methods=['GET', 'POST'])
 def showHome():
     return render_template("index.html")
-    
+
+@app.route('/showSettings', methods=['GET', 'POST'])
+def showSettings():
+    return render_template("settings.html")
+ 
 @app.route('/showControls', methods=['GET', 'POST'])
 def showControls():
     return render_template("controls.html")
@@ -804,6 +819,13 @@ def disableHcidump():
 def enableHcidump():
     executeCommand("ENABLE_HCIDUMP")
     return render_template("controls.html")
+
+@app.route('/set_auth_code', methods=['POST'])
+def set_auth_code():
+    global auth_code
+    auth_code = request.form['auth_code']
+    logging.debug("User entered auth_code is [" + auth_code + "]")
+    return auth_code
 
 # Will be executed from a thread
 def start_webserver():
@@ -891,6 +913,7 @@ logging.debug("Total of [" + str(len(songs)) + "] songs")
 #subprocess.Popen(play_song_command, shell=True, stdout=subprocess.PIPE)
 
 # To play songs with Bluetooth
+# consult "https://gist.github.com/boulund/8949499e17493e1c00db"
 # install pulseaudio pulseaudio-module-x11 pulseaudio-utils pavucontrol
 # install pulseaudio-module-bluetooth
 # bluetoothctl - power on, agent on, default-agent, devices, pair <MAC>, trust <MAC>, connect <MAC>
