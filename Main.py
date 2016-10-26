@@ -839,7 +839,7 @@ def start_webserver():
 # Prevent Pi from sleeping (TODO: not sure if this helps)
 # Refer to: https://www.bitpi.co/2015/02/14/prevent-raspberry-pi-from-sleeping/
 # Also did this and not sure if it helps: https://www.raspberrypi.org/forums/viewtopic.php?f=29&t=35054
-os.system("setterm -blank 0 -powerdown 0")
+#os.system("setterm -blank 0 -powerdown 0")
 
 config = ConfigParser.RawConfigParser()
 
@@ -927,11 +927,12 @@ logging.debug("Total of [" + str(len(songs)) + "] songs")
 # also before the script can be used, python's 'pexpect' module must be installed
 # To do that use 'pip install pexpect'
 
-logging.debug('Starting pulseaudio daemon...')
+#logging.debug('Starting pulseaudio daemon...')
 # must use 'sudo adduser root pulse-access' first
-os.system("su - pi -c \"pulseaudio -D\"")
+#os.system("su - pi -c \"pulseaudio -D\"")
+#os.system("su - pi -c \"pulseaudio --start\"")
 time.sleep(3)
-logging.debug('pulseaudio daemon started')
+#logging.debug('pulseaudio daemon started')
 
 logging.debug('BT section start')
 
@@ -1024,6 +1025,8 @@ if hcidump_wait < 20:
     time.sleep(20 - hcidump_wait)
 play_info_sound("bt_connect_01.wav")
 logging.debug('starting main threads')
+
+del bt
 
 # Now playing the song but also listening to events from the bluetooth device
 # in order to detect muttimedia button presses (pause, play, previous, next)
