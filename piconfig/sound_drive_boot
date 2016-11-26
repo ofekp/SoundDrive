@@ -22,7 +22,11 @@ case "$1" in
   errlog_file="/home/pi/ofek/SoundDrive/errlog"
   echo "" > $errlog_file
   echo "DATE: $(date), WHOAMI: $(whoami), USER: $USER, RUNLEVEL: $(runlevel)" > $errlog_file
-  sudo -u $USER sh -c "sudo killall python; sudo killall mplayer; sudo killall hcidump; pulseaudio --start >> $errlog_file 2>&1; cd /home/pi/ofek/SoundDrive; python Main.py >> $errlog_file 2>&1 &"
+  sudo killall python >> $errlog_file 2>&1
+  sudo killall mplayer >> $errlog_file 2>&1
+  sudo killall hcidump >> $errlog_file 2>&1
+  su - $USER -c "pulseaudio -D >> $errlog_file 2>&1"
+  su - $USER -c "cd /home/pi/ofek/SoundDrive; python Main.py >> $errlog_file 2>&1 &"
   ;;
 
  stop)
