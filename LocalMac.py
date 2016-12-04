@@ -89,6 +89,8 @@ def isVideoAvailable(youtube, video_id):
         part="status",
         id=video_id
         ).execute()
+    if response["items"] == []:
+        return False
     video = response["items"][0]
     return (video['status']['uploadStatus'] == 'processed')
 
