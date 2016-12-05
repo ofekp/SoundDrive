@@ -428,6 +428,7 @@ def detect_bt_mm_press():
     hcidump = Hcidump()
     while hcidump_enabled:
         line = hcidump.get_output()
+        logging.debug("line: " + str(line))
         line = line[0].strip()
         if curr_song_play_pipe != None and len(line) == 50 and mm_press_re.match(line) != None:
             logging.debug(line)
@@ -446,6 +447,7 @@ def detect_bt_mm_press():
                 perform_cmd_thread.start()
     logging.debug("Stopped hcidump thread")
     os.system("sudo killall hcidump")
+    del hcidump
     play_info_sound("sync_failed_01.mp3")  # TODO: remove this
     
     
@@ -927,12 +929,14 @@ logging.debug("Total of [" + str(len(songs)) + "] songs")
 # also before the script can be used, python's 'pexpect' module must be installed
 # To do that use 'pip install pexpect'
 
-#logging.debug('Starting pulseaudio daemon...')
+# Solving "org.bluez.Error.NotReady" error when trying "scan on" in bluetoothctl
+os.system("sudo hciconfig hci0 up")
+logging.debug('Starting pulseaudio daemon...')
 # must use 'sudo adduser root pulse-access' first
-#os.system("su - pi -c \"pulseaudio -D\"")
+os.system("pulseaudio -D")
 #os.system("su - pi -c \"pulseaudio --start\"")
 time.sleep(3)
-#logging.debug('pulseaudio daemon started')
+logging.debug('pulseaudio daemon started')
 
 logging.debug('BT section start')
 
