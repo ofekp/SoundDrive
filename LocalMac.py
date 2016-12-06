@@ -50,7 +50,8 @@ def getNumOfCores():
 # Important to update! use 'sudo pip install -U youtube-dl' for that
 import youtube_dl
 
-# Requires 'brew install ffmpeg' (not libav!)
+# MAC: Requires 'brew install ffmpeg' (not libav!)
+# Linux: Requires 'sudo apt-get install libav-tools'
 c = 0
 def downloadSong(yt_song_url):
     global c
@@ -59,7 +60,7 @@ def downloadSong(yt_song_url):
     
     if c > 0:
         return
-#    c += 1
+    #c += 1
 
     options = {
         'writethumbnail': True,
@@ -240,7 +241,8 @@ def sync_playlist():
     yt_vids_to_download = []
     for song in songs:
         song_file = song['title'] + ".mp3"
-        if song_file in files:
+        song_photo_file = song['title'] + ".jpg"
+        if song_file in files and not song_photo_file in files:
             logging.debug("File [" + song_file + "] already exists.")
         else:
             if isVideoAvailable(youtube, song['video_id']):
@@ -303,7 +305,7 @@ playlist_name = config.get('youtube', 'playlist_name')
 playlist_id = config.get('youtube', 'playlist_id')
 songs = eval(config.get('youtube', 'playlist'))
 # Fields deduced from config
-playlist_path = "/Users/ofek/MyTools/SoundDrive/playlists/" + playlist_name
+playlist_path = "playlists/local/" + playlist_name
 
 # Create playlist folder if needed
 if not os.path.isdir(playlist_path):
