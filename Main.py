@@ -521,11 +521,11 @@ def sync_playlist():
         logging.warning("No song to stop playing for the sync process")
         
     # TODO: this is for debug only (remove when done!)
-    try:
-        ipaddr = check_output("ifconfig | grep -A 1 wlan0 | grep 'inet addr:' | cut -d':' -f2 | cut -d' ' -f1", shell=True)
-        sendNotification(ipaddr)
-    except:
-        logging.warning("Could not send message to phone...")
+    #try:
+    #    ipaddr = check_output("ifconfig | grep -A 1 wlan0 | grep 'inet addr:' | cut -d':' -f2 | cut -d' ' -f1", shell=True)
+    #    sendNotification(ipaddr)
+    #except:
+    #    logging.warning("Could not send message to phone...")
 
     # Sound taken from https://appraw.com/ringtone/input-xxk4r
     play_info_sound("sync_started_01.mp3")
@@ -708,9 +708,9 @@ def downloadSong(yt_song_url):
             ydl.download([yt_song_url])
         logging.debug("Downloaded song [" + yt_song_url + "]")
         # TODO: play_info_sound("song_download_complete.mp3")
-    except:
-        logging.debug("Could not download song [" + yt_song_url + "]")
-        # TODO: play_info_sound("song_download_failed.mp3")    
+    except Exception as e:
+        logging.debug("Could not download song [" + yt_song_url + "] exception [" + str(e) + "]")
+        # TODO: play_info_sound("song_download_failed.mp3")
 
 # ****************
 # Flask web server
