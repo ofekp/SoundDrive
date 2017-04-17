@@ -24,8 +24,8 @@ iface wlan0 inet static
   wireless-mode ad-hoc
 
 #iface wlan0 inet dhcp
-#    wpa-ssid "OFEK"
-#    wpa-psk "cctv4batore"
+#    wpa-ssid "REMOVED"
+#    wpa-psk "REMOVED"
 
 #allow-hotplug wlan1
 #iface wlan1 inet manual
