@@ -300,7 +300,8 @@ def sync_playlist(playlist_name_list):
         for song in playlist['songs']:
             song_title = song['title']
             song_file = song['title'] + ".mp3"
-            if song_file in files:
+            song_photo_file = song['title'] + ".jpg"
+            if song_file in files and not song_photo_file in files:
                 logging.debug("File [" + song_file + "] already exists.")
             else:
                 if isVideoAvailable(youtube, song['video_id']):
