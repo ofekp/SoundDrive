@@ -38,6 +38,9 @@ class Bluetoothctl:
     def __init__(self):
         #out = subprocess.check_output("rfkill unblock bluetooth", shell = True)
         self.child = pexpect.spawn("bluetoothctl", echo = False)
+        open("btctl.log", "w").close()
+        logfile = open("btctl.log", "a")
+        self.child.logfile = logfile
 
     def __del__(self):
         self.child.close()
@@ -185,7 +188,17 @@ class Bluetoothctl:
             print(e)
             return None
         else:
-            res = self.child.expect(["Failed to pair", "Pairing successful", pexpect.EOF])
+            res = self.child.expect(["Failed to pair", "Pairing successful", "Request confirmation", pexpect.EOF])
+            if res == 2:
+                print("yes 2")
+                try:
+                    out = self.get_output("yes", 10)
+                except BluetoothctlError, e:
+                    print(e)
+                    return None
+                else:
+                    res = self.child.expect(["Failed to pair", "Pairing successful", pexpect.EOF])
+            print("not 2")
             success = True if res == 1 else False
             return success
 

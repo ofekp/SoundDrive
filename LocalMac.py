@@ -65,6 +65,9 @@ def youtubeDlHook(d):
 # Download the video
 # Requires 'brew install ffmpeg' (not libav!)
 # also may require 'brew update && brew upgrade ffmpeg'
+# 
+# MAC: Requires 'brew install ffmpeg' (not libav!)
+# Linux: Requires 'sudo apt-get install libav-tools'
 c = 0
 def downloadSong(yt_song_structure):
     global c
@@ -227,6 +230,7 @@ def sync_playlist(playlist_name_list):
         
     # Get videos list from the playlist response
     songs = []
+
     for i, playlist_id in enumerate(playlist_id_list):
         nextPageToken = ""
         playlist = {}
@@ -364,8 +368,7 @@ if not os.path.isfile(config_file_name) or os.stat(config_file_name).st_size == 
 playlist_name_list = eval(config.get('youtube', 'playlist_name_list'))
 playlist_id_list = eval(config.get('youtube', 'playlist_id_list'))
 songs = eval(config.get('youtube', 'songs'))
-# Fields deduced from config
-playlist_root_path = "/Users/ofek/MyTools/SoundDrive/playlists/"
+playlist_root_path = "playlists/local/"
 
 # Create playlist folder if needed
 for playlist_name in playlist_name_list:
