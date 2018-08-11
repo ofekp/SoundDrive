@@ -529,6 +529,10 @@ def sync_playlist():
 
     # Sound taken from https://appraw.com/ringtone/input-xxk4r
     play_info_sound("sync_started_01.mp3")
+
+    # update youtube-dl to avoid errors
+    os.system("sudo pip install --upgrade youtube-dl")
+
     storage = Storage("%s-oauth2.json" % sys.argv[0])
     credentials = storage.get()
 
@@ -871,12 +875,11 @@ if not os.path.isfile(config_file_name) or os.stat(config_file_name).st_size == 
     
 # Starting flask webserver
 if __name__ == "__main__":  # TODO: is this needed
-	adHocModeListen()
-
-	logging.debug("Starting Flask webserver...")
-	webserver_therad = Thread(target=start_webserver)
-	#webserver_therad.daemon = True
-	webserver_therad.start()
+    adHocModeListen()
+    logging.debug("Starting Flask webserver...")
+    webserver_therad = Thread(target=start_webserver)
+    webserver_therad.daemon = True
+    webserver_therad.start()
 
 
 # ****
